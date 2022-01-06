@@ -2,3 +2,6 @@
 	path = docker
 	url = git@github.com:mrcarromesa/docker.git
 	branch = master
+[submodule "kubernetes"]
+	path = kubernetes
+	url = git@github.com:mrcarromesa/kubernetes.git
