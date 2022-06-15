@@ -56,6 +56,12 @@ go test ./...
 
 - Pois assim ele irá executar todos os testes que encontrar.
 
+- Muitas vezes é interesante limpar o cache dos testes podemos fazer isso executando esse comando:
+
+```shell
+go clean -testcache
+```
+
 ---
 
 ### Validation
@@ -192,3 +198,32 @@ GOOGLE_APPLICATION_CREDENTIALS="ARQUIVO_CRENDENTIAL.json"
 ---
 
 - Para utilizar as funcionalidades do gcp utilizamos a dependencia: `cloud.google.com/go/storage`
+
+- Para realizar upload é necessario alterar o ACL de uniforme para detalhado
+
+---
+
+### Upload
+
+- Para realização do upload será utilizado o `encoder/application/services/upload_manager.go`
+- Ele irá obter os Paths dos arquivos
+- Irá conectar-se com o GCP
+- Irá utilizar o go routines para realizar o upload de todos os paths ou arquivos.
+- Ao terminar o upload ou obter erro ele encerra o canal e go routine
+
+---
+
+### Jobs
+
+- Será através dos jobs que serão feitas as etapas de:
+- Baixar o arquivo do GCP
+- Fragmentar o arquivo
+- Realizar o encode
+- Por fim realizar o upload do arquivo
+
+- Para cada uma dessas etapas será salvo/atualizado o status do processo na base de dados, 
+- Também será tratado o erro em cada uma das etapas caso venha a ocorrer
+
+- Esse job será chamado via fila para gerenciar essas filas será utilizado o RabbitMQ
+
+- O RabbitMQ combina mais com a camada de framework
