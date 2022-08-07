@@ -21,7 +21,7 @@ func (j *JobService) Start() error {
 		return j.failJob(err)
 	}
 
-	err = j.VideoService.Download(os.Getenv("codeeducationcodflixtest"))
+	err = j.VideoService.Download(os.Getenv("OUTPUT_BUCKET_NAME"))
 
 	if err != nil {
 		return j.failJob(err)

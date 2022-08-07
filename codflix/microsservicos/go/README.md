@@ -8,6 +8,12 @@
 docker compose up --build
 ```
 
+- Esse comando irá deixar o processo rodando no terminal, para poder continuar utilizando o terminal podemos utilizar esse comando ao invés:
+
+```shell
+docker compose up -d
+```
+
 - Para acessar o container executar o comando:
 
 ```shell
@@ -227,3 +233,217 @@ GOOGLE_APPLICATION_CREDENTIALS="ARQUIVO_CRENDENTIAL.json"
 - Esse job será chamado via fila para gerenciar essas filas será utilizado o RabbitMQ
 
 - O RabbitMQ combina mais com a camada de framework
+
+- Para rodar o RabbitMQ foi adicionado mais algumas coisas no `encoder/docker-compose.yaml`:
+
+```yaml
+  rabbit:
+    image: "rabbitmq:3-management"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: "rabbitmq"
+      RABBITMQ_DEFAULT_PASS: "rabbitmq"
+      RABBITMQ_DEFAULT_VHOST: "/"
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+```
+
+---
+
+#### Criando os works
+
+- Criar o arquivo `encoder/application/services/job_worker.go` e `encoder/application/services/job_manager.go`
+
+
+#### Resumindo
+
+- No projeto temos 3 camadas básicas
+	- application
+	- domain
+		- Job
+		- Video
+	- framework
+
+- Tudo isso para divisão de responsabilidades.
+
+- O objetivo é pegar o vídeo e conseguir converter.
+
+- Esse nosso serviço recebe as requisições via fila.
+- O projeto ficará escutando as filas
+
+- Para tal temos o manager, que irá gerenciar vários workers.
+
+- A cada vez que ele terminar a conversão de vídeo ele retorna uma mensagem informando que o processo finalizou.
+
+- O job_worker tem algumas responsabilidades, ele irá validar os dados, salvar os dados no banco de dados, iniciar o job.
+
+----
+
+## Main
+
+- Criamos a porta de entrada da aplicação que será o `framework/cmd/server/server.go`
+
+
+
+#### defer
+
+- É um recurso que aguarda tudo ser finalizado para depois ser executado.
+
+
+----
+
+## Executando a aplicação
+
+- Primeiro de tudo executar:
+
+```shell
+docker compose up -d
+```
+
+- Teremos 3 containers criados:
+
+```shell
+Container encoder-db-1
+Container encoder-rabbit-1
+Container encoder-app-1
+```
+
+- Inicialmente precisamos acessar o container de aplicação nesse caso seria o `encoder-app-1`:
+
+```shell
+docker exec -it encoder-app-1 bash
+```
+
+---
+
+### RabbitMQ
+
+- Para acessar o RabbitMQ após ter subido os containers podemos acessar através do browser:
+
+http://localhost:15672/#/
+
+- O usuário e senha estão no arquivo `.env`
+
+- Em `framework/queue/queue.go` temos:
+
+```go
+func NewRabbitMQ() *RabbitMQ {
+
+	rabbitMQArgs := amqp.Table{}
+	rabbitMQArgs["x-dead-letter-exchange"] = os.Getenv("RABBITMQ_DLX")
+
+	rabbitMQ := RabbitMQ{
+		User:              os.Getenv("RABBITMQ_DEFAULT_USER"),
+		Password:          os.Getenv("RABBITMQ_DEFAULT_PASS"),
+		Host:              os.Getenv("RABBITMQ_DEFAULT_HOST"),
+		Port:              os.Getenv("RABBITMQ_DEFAULT_PORT"),
+		Vhost:             os.Getenv("RABBITMQ_DEFAULT_VHOST"),
+		ConsumerQueueName: os.Getenv("RABBITMQ_CONSUMER_QUEUE_NAME"),
+		ConsumerName:      os.Getenv("RABBITMQ_CONSUMER_NAME"),
+		AutoAck:           false,
+		Args:              rabbitMQArgs,
+	}
+
+	return &rabbitMQ
+}
+```
+
+- É onde temos as exchange para notificar quando teve sucesso ou se deu algum erro.
+- O microsserviço que irá utilizar nossa aplicação quer ter uma resposta se deu certo ou errado, e para isso ele precisa ler uma fila que irá conter o resultado.
+
+- Nas envs temos a parte de notification_ex (notification exchages) que é uma notification padrão do RabbitMQ, e nós vamos notificar para essa exchages, que tenha a routing key chamada de jobs.
+- Temos também o rabbitmq dlx, que é a dead leader queue exchages, que irá capturar as mensagens rejeitadas.
+
+
+
+#### Adicionar uma exchanges
+
+- Em http://localhost:15672/#/ adicionar a exchange:
+
+![Exchanges](./assets_readme/exchanges.png)
+
+
+#### Criar fila 
+
+- Em http://localhost:15672/#/ adicionar a fila:
+
+![Queue](./assets_readme/queue1.png)
+
+- Com fila criada iremos fazer o bind dela com `amq.direct` na routing key `jobs`:
+![Bind](./assets_readme/bind.png)
+
+- Também seguindo o mesmo processo criamos a fila `videos-failed`
+- E essa fila devemos fazer o bind na exchange `dlx`, nesse caso não precisa de routing key.
+
+- Dessa forma qualquer coisa que for reijeitada cairá na dlx, e nela iremos consumir essa fila.
+
+
+- Não foi criada a fila `videos` pois quando subimos a aplicação e for dado um `declare`, automaticamente a fila será criada:
+
+```go
+// framework/queue/queue.go
+
+func (r *RabbitMQ) Consume(messageChannel chan amqp.Delivery) {
+
+	q, err := r.Channel.QueueDeclare(
+		r.ConsumerQueueName, // name
+		true,                // durable
+		false,               // delete when usused
+		false,               // exclusive
+		false,               // no-wait
+		r.Args,              // arguments
+	)
+	failOnError(err, "failed to declare a queue")
+// ...
+}
+
+```
+
+- Para testar acessar o container de aplication:
+
+```shell
+docker exec -it encoder-app-1 bash
+```
+
+- Nele executar o comando:
+
+```shell
+go run framework/cmd/server/server.go
+```
+
+- Estando em modo de debug ele deve logar algumas coisas na tela:
+
+```shell
+bash-5.0# go run framework/cmd/server/server.go
+
+(/go/src/framework/database/db.go:61) 
+[2022-08-07 11:40:01]  [180.49ms]  CREATE TABLE "videos" ("id" uuid,"resoruce_id" varchar(255),"file_path" varchar(255),"created_at" timestamp with time zone , PRIMARY KEY ("id"))  
+[0 rows affected or returned ] 
+
+(/go/src/framework/database/db.go:61) 
+[2022-08-07 11:40:01]  [48.04ms]  CREATE TABLE "jobs" ("id" uuid,"output_bucket_path" text,"status" text,"video_id" uuid,"error" text,"created_at" timestamp with time zone,"updated_at" timestamp with time zone , PRIMARY KEY ("id"))  
+[0 rows affected or returned ] 
+
+(/go/src/framework/database/db.go:62) 
+[2022-08-07 11:40:01]  [65.71ms]  ALTER TABLE "jobs" ADD CONSTRAINT jobs_video_id_videos_id_foreign FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE ON UPDATE CASCADE;  
+[0 rows affected or returned ] 
+```
+
+- E esse processo irá criar a fila de videos em `http://localhost:15672/#/queues` e é nessa fila de `videos` que os microsserviços irão enviar uma mensagem para ela, o sistema pega essa mensagem, e pegando essa mensagem será iniciado o processamento dos vídeos.
+
+---
+
+### Testando
+
+- Acessar a fila de videos e publicar uma mensagem manualmente:
+
+![Fila videos](./assets_readme/test_fila_videos.png)
+
+Lembrando que `file_path` deve ser o nome do arquivo existente no bucket,
+
+Com isso ele deve gerar os arquivos no nosso bucket do google!
+
+E podemos ver que nas fila de video-result temos mensagens para ler:
+
+![Mensagens](./assets_readme/video_result2.png)

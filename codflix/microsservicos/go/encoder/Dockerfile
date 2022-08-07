@@ -3,6 +3,11 @@ ENV PATH="$PATH:/bin/bash" \
     BENTO4_BIN="/opt/bento4/bin" \
     PATH="$PATH:/opt/bento4/bin"
 
+# Certificates
+ADD cert.crt /usr/local/share/ca-certificates/cert.crt
+RUN chmod 644 /usr/local/share/ca-certificates/cert.crt
+RUN cat /usr/local/share/ca-certificates/cert.crt >> /etc/ssl/certs/ca-certificates.crt
+
 # FFMPEG
 RUN apk add --update ffmpeg bash curl make
 
