@@ -447,3 +447,65 @@ Com isso ele deve gerar os arquivos no nosso bucket do google!
 E podemos ver que nas fila de video-result temos mensagens para ler:
 
 ![Mensagens](./assets_readme/video_result2.png)
+
+
+---
+
+### Race Detector
+
+- Esse é um recurso bem interessante do go: https://go.dev/blog/race-detector
+- Um dos pontos quando se trabalha com threads é a parte de `race codition` ou seja um processo iniciou salvo uma informação no banco de dados 
+ Na sequencia vem um outro processo e utilizando o mesmo id e salva outra informação no banco invalidando a anterior, então em muitos cenários isso pode ser um problema
+
+- Em go para tentar detectar isso podemos executar o comando `go run -race ...` exemplo:
+
+```shell
+go run -race framework/cmd/server/server.go
+```
+
+- Executar esse comando no container `encoder-app-1`
+
+- Antes disso precisa ajustar nas envs a variavel: 
+
+```
+CONCURRENCY_WORKERS=2
+```
+
+- para um valor maior que 1,
+
+- No terminal poderá logar algumas coisas referente race codition, quando eu tento executar várias filas ao mesmo tempo... algo como isso:
+
+```shell
+==================
+WARNING: DATA RACE
+...
+```
+
+- E também ele dará alguma pista de que arquivo e linha que pode estar tendo esse gargalo.
+
+- Um exemplo disso é no arquivo: `application/services/job_worker.go`:
+
+```go
+jobService.VideoService.Video.ID = uuid.NewV4().String()
+```
+
+- de alguma forma enquanto um processo está atribuindo um valor vem outro processo e atribui outro valor.
+
+- Uma solução para isso é bloquear temporariamente o valor para evitar que ele seja alterado por outro processo...
+
+- Para tal é possível utilizar o Mutex(Mutual exclusion), é possível dar um lock em algum momento, resolver o que precisa, e depois dar um unlock para evitar que outras threads atrapalhem nesse momento.
+
+- Para utilizar o `Mutex` criamos uma variavel:
+
+```go
+var Mutex = &sync.Mutex{}
+```
+
+- E adicionamos ela em pontos estratégicos dessa forma:
+
+```go
+Mutex.Lock()
+err = json.Unmarshal(message.Body, &jobService.VideoService.Video)
+jobService.VideoService.Video.ID = uuid.NewV4().String()
+Mutex.Unlock()
+```
