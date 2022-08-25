@@ -21,6 +21,16 @@ brew install graphviz
 ## Utilizar o Docker para o node
 
 - Adicionar o arquivo Dockerfile e docker-compose.yaml
+
+- No Dockerfile temos definido o USER node, não é recomendado utilizar o usuário root, quanto menos privilégios mais seguro
+
+- Para manter a máquina travada, sempre rodando deixamos um comando executando eternamente como no caso:
+
+```
+CMD ["tail", "-f", "/dev/null"]
+```
+
+
 - E depois de adicionar as configurações rodar o comando:
 
 ```shell
@@ -87,3 +97,11 @@ transform: {
 - Deve levar em conta a piramide de testes...
 
 ![Piramide de testes](./readme/assets/piramide_de_testes.png)
+
+---
+
+### Objetos de valores
+
+- Para objetos de valores utilizamos no final do nome do arquivo o `.vo`
+- Ex.:
+`src/@seedwork/domain/unique-entity-id.vo.ts`

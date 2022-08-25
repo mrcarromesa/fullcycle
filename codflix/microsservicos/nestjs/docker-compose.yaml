@@ -1,23 +1,7 @@
 version: '3'
-
-volumes:
-  code:
-
 services:
   app:
     build: .
     container_name: micro-videos-typescript-app
     volumes:
-      - code:/home/node/app
-
-x-mutagen:
-  sync:
-    mode: "two-way-resolved"
-    symlink:
-        mode: "posix-raw"
-    ignore:
-      vcs: true
-    #defaults:
-    code:
-      alpha: "./"
-      beta: "volume://code"
+      - .:/home/node/app
